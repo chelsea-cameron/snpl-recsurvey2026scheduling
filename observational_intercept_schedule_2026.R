@@ -1,10 +1,8 @@
 #..............................................................................#      
 #........ Snowy Plover Recreation Survey Sampling Windows Generator ...........#
 #
-# For 2 sites, May 10-August 31, 2026
-# Observational surveys: 4 days per week, 2-hour windows
-# Visitor intercept surveys: 1 day per week, 3-hour windows
-# No holidays or festivals factored into sampling
+# For 2 sites, May 10-August 31, with one time slot per survey type per site per day
+# Ensuring no time overlap between surveys
 #..............................................................................#
 
 library(lubridate)
@@ -12,15 +10,15 @@ library(dplyr)
 library(tidyr)
 
 # Set working directory
-# CHANGE THIS TO WHERE YOU WANT THE CSV FILES SAVED
-# setwd("C:/Users/your.name/Documents/SNPL")
+setwd("C:/Users/emily.hamel/Box/-.Emily.Hamel Individual/GSL/SNPL")
+# NOTE: working directory will need to be changed based on the user.
+# The file path identified will be where the output files will be saved.
 
 # For reproducibility
 set.seed(123)
 
 #..............................................................................#
-# Define survey period
-
+# Define survey period (May 10 through August 31, 2026)
 start_date <- as.Date("2026-05-10")
 end_date <- as.Date("2026-08-31")
 
@@ -42,8 +40,8 @@ all_dates <- all_dates %>%
     is_weekday = !is_weekend
   )
 
+#..............................................................................#
 # Create strata for stratified sampling
-# This year we are only using Weekday vs Weekend
 all_dates <- all_dates %>%
   mutate(
     day_type = case_when(
@@ -54,25 +52,22 @@ all_dates <- all_dates %>%
 
 #..............................................................................#
 # Define site names
-
 sites <- c("Saltair", "Kennecott")
 
-# Define possible sampling hours
+# Define possible sampling hours for observational surveys
+# Observational surveys are 2-hour windows
+# Last window starts at 6pm and ends at 8pm
+observational_hours <- seq(6, 18, by = 2)
 
-# Observational surveys are 2-hour windows.
-# Last observational window starts at 6 PM and ends at 8 PM.
-observational_hours <- seq(6, 18, by = 1)
-
-# Visitor intercept surveys are 3-hour windows.
-# Last intercept window starts at 5 PM and ends at 8 PM.
-intercept_hours <- seq(6, 17, by = 1)
+# Define possible sampling hours for visitor intercept surveys
+# Visitor intercept surveys are 3-hour windows
+# Last window starts at 6pm and ends at 9pm
+intercept_hours <- seq(6, 18, by = 3)
 
 #..............................................................................#
 # Helper function to parse time strings to numeric hours
-
 parse_time_to_hour <- function(time_str) {
   hour_num <- 0
-  
   if (grepl("AM", time_str)) {
     hour_num <- as.numeric(sub(":00 AM", "", time_str))
     if (hour_num == 12) hour_num <- 0
@@ -80,12 +75,10 @@ parse_time_to_hour <- function(time_str) {
     hour_num <- as.numeric(sub(":00 PM", "", time_str))
     if (hour_num != 12) hour_num <- hour_num + 12
   }
-  
   return(hour_num)
 }
 
 # Helper function to format hours to time strings
-
 format_hour_to_time <- function(hour) {
   if (hour < 12) {
     return(paste0(hour, ":00 AM"))
@@ -97,62 +90,75 @@ format_hour_to_time <- function(hour) {
 }
 
 #..............................................................................#
-# Main function to generate surveys
-
-generate_recreation_surveys <- function(dates_df, site_names) {
+generate_non_overlapping_surveys <- function(dates_df, site_names) {
   
+  # Create empty data frames for both surveys
   observational_results <- data.frame()
   intercept_results <- data.frame()
   
-  #............................................................................#
-  # OBSERVATIONAL SURVEYS
-  # 4 randomly selected survey dates per week
-  
+  # Process each week
   for (w in unique(dates_df$week_id)) {
-    
     week_dates <- subset(dates_df, week_id == w)
     
-    # Sample up to 4 dates per week
-    n_obs_dates <- min(4, nrow(week_dates))
+    # Determine number of observational dates to sample
+    # Observational surveys occur 4 days per week
+    n_dates <- min(4, nrow(week_dates))
     
-    if (n_obs_dates == 0) next
+    if (n_dates == 0) next
     
-    sampled_indices <- sample(1:nrow(week_dates), n_obs_dates, replace = FALSE)
+    # Sample dates from the week
+    sampled_indices <- sample(1:nrow(week_dates), n_dates, replace = FALSE)
     
+    # For each sampled date
     for (idx in sampled_indices) {
-      
       date_row <- week_dates[idx, ]
       d <- date_row$date
       
-      # One observational survey per site on each selected date
+      # Get available hours for the entire day
+      available_hours <- observational_hours
+      
+      # Make sure there are enough available hours to choose one time slot per site
+      if (length(available_hours) < length(site_names)) {
+        warning(paste("Not enough hours for", d))
+        next
+      }
+      
+      # Randomly select unique start hours for each site
+      selected_hours <- sample(available_hours, length(site_names), replace = FALSE)
+      
+      # Assign hours to site/survey combinations
       assignments <- data.frame(
         site = site_names,
         survey = "Observational",
         stringsAsFactors = FALSE
       )
       
-      # Randomly assign a 2-hour start time for each site
-      assignments$start_hour <- sample(observational_hours,
-                                       nrow(assignments),
-                                       replace = FALSE)
+      # Randomly assign the selected hours to the site/survey combinations
+      assignments$start_hour <- sample(selected_hours, length(site_names), replace = FALSE)
       
+      # For each assignment, generate the survey entry
       for (i in 1:nrow(assignments)) {
-        
         this_site <- assignments$site[i]
+        this_survey <- assignments$survey[i]
         start_hour <- assignments$start_hour[i]
         end_hour <- start_hour + 2
         
+        # Format date and time
+        date_str <- format(d, "%B %d %Y")
+        weekday <- weekdays(d)
+        start_ampm <- format_hour_to_time(start_hour)
+        end_ampm <- format_hour_to_time(end_hour)
+        
         new_row <- data.frame(
-          survey = "Observational",
+          survey = this_survey,
           site = this_site,
-          date = format(d, "%B %d %Y"),
+          date = date_str,
           raw_date = d,
-          day = weekdays(d),
+          day = weekday,
           month = as.character(date_row$month_name),
           day_type = date_row$day_type,
-          week_id = date_row$week_id,
-          start_time = format_hour_to_time(start_hour),
-          end_time = format_hour_to_time(end_hour),
+          start_time = start_ampm,
+          end_time = end_ampm,
           stringsAsFactors = FALSE
         )
         
@@ -161,66 +167,87 @@ generate_recreation_surveys <- function(dates_df, site_names) {
     }
   }
   
-  #............................................................................#
-  # VISITOR INTERCEPT SURVEYS
-  # 1 randomly selected survey date per week
-  
+  # Process each week
   for (w in unique(dates_df$week_id)) {
-    
     week_dates <- subset(dates_df, week_id == w)
     
-    if (nrow(week_dates) == 0) next
+    # Determine number of visitor intercept dates to sample
+    # Visitor intercept surveys occur 1 day per week
+    n_dates <- min(1, nrow(week_dates))
     
-    sampled_index <- sample(1:nrow(week_dates), 1, replace = FALSE)
-    date_row <- week_dates[sampled_index, ]
-    d <- date_row$date
+    if (n_dates == 0) next
     
-    # One visitor intercept survey per site on the selected date
-    assignments <- data.frame(
-      site = site_names,
-      survey = "Visitor Intercept",
-      stringsAsFactors = FALSE
-    )
+    # Sample dates from the week
+    sampled_indices <- sample(1:nrow(week_dates), n_dates, replace = FALSE)
     
-    # Randomly assign a 3-hour start time for each site
-    assignments$start_hour <- sample(intercept_hours,
-                                     nrow(assignments),
-                                     replace = FALSE)
-    
-    for (i in 1:nrow(assignments)) {
+    # For each sampled date
+    for (idx in sampled_indices) {
+      date_row <- week_dates[idx, ]
+      d <- date_row$date
       
-      this_site <- assignments$site[i]
-      start_hour <- assignments$start_hour[i]
-      end_hour <- start_hour + 3
+      # Get available hours for the entire day
+      available_hours <- intercept_hours
       
-      new_row <- data.frame(
+      # Make sure there are enough available hours to choose one time slot per site
+      if (length(available_hours) < length(site_names)) {
+        warning(paste("Not enough hours for", d))
+        next
+      }
+      
+      # Randomly select unique start hours for each site
+      selected_hours <- sample(available_hours, length(site_names), replace = FALSE)
+      
+      # Assign hours to site/survey combinations
+      assignments <- data.frame(
+        site = site_names,
         survey = "Visitor Intercept",
-        site = this_site,
-        date = format(d, "%B %d %Y"),
-        raw_date = d,
-        day = weekdays(d),
-        month = as.character(date_row$month_name),
-        day_type = date_row$day_type,
-        week_id = date_row$week_id,
-        start_time = format_hour_to_time(start_hour),
-        end_time = format_hour_to_time(end_hour),
         stringsAsFactors = FALSE
       )
       
-      intercept_results <- rbind(intercept_results, new_row)
+      # Randomly assign the selected hours to the site/survey combinations
+      assignments$start_hour <- sample(selected_hours, length(site_names), replace = FALSE)
+      
+      # For each assignment, generate the survey entry
+      for (i in 1:nrow(assignments)) {
+        this_site <- assignments$site[i]
+        this_survey <- assignments$survey[i]
+        start_hour <- assignments$start_hour[i]
+        end_hour <- start_hour + 3
+        
+        # Format date and time
+        date_str <- format(d, "%B %d %Y")
+        weekday <- weekdays(d)
+        start_ampm <- format_hour_to_time(start_hour)
+        end_ampm <- format_hour_to_time(end_hour)
+        
+        new_row <- data.frame(
+          survey = this_survey,
+          site = this_site,
+          date = date_str,
+          raw_date = d,
+          day = weekday,
+          month = as.character(date_row$month_name),
+          day_type = date_row$day_type,
+          start_time = start_ampm,
+          end_time = end_ampm,
+          stringsAsFactors = FALSE
+        )
+        
+        intercept_results <- rbind(intercept_results, new_row)
+      }
     }
   }
   
-  # Combine results
+  # Combine the results from both surveys
   combined_results <- rbind(observational_results, intercept_results)
   
-  # Sort by date, site, survey, and start time
+  # Sort by date, site, and start time
   combined_results <- combined_results %>%
     mutate(
       sort_date = as.Date(raw_date),
       sort_hour = sapply(start_time, parse_time_to_hour)
     ) %>%
-    arrange(sort_date, site, survey, sort_hour) %>%
+    arrange(sort_date, site, sort_hour, survey) %>%
     select(-sort_date, -sort_hour)
   
   return(list(
@@ -231,66 +258,51 @@ generate_recreation_surveys <- function(dates_df, site_names) {
 }
 
 #..............................................................................#
-# Generate survey schedules
-
-survey_results <- generate_recreation_surveys(
+# Generate both surveys with guaranteed non-overlapping time slots
+survey_results <- generate_non_overlapping_surveys(
   all_dates,
   sites
 )
 
+# Extract the results
 combined_schedule <- survey_results$combined
 observational_schedule <- survey_results$observational
 intercept_schedule <- survey_results$intercept
 
 #..............................................................................#
-# Verification checks
+# Comprehensive verification checks
 
+# Check observational survey days per week
 cat("\n Verifying observational survey days per week... \n")
-
-obs_days_per_week <- observational_schedule %>%
+observational_days_per_week <- observational_schedule %>%
+  mutate(week_id = paste(year(raw_date), isoweek(raw_date), sep = "_")) %>%
   group_by(week_id) %>%
-  summarise(
-    unique_dates = n_distinct(raw_date),
-    total_slots = n(),
-    .groups = "drop"
-  )
+  summarise(unique_dates = n_distinct(raw_date), total_slots = n(), .groups = "drop")
 
-print(obs_days_per_week)
+print(observational_days_per_week)
 
+# Check visitor intercept survey days per week
 cat("\n Verifying visitor intercept survey days per week... \n")
-
 intercept_days_per_week <- intercept_schedule %>%
+  mutate(week_id = paste(year(raw_date), isoweek(raw_date), sep = "_")) %>%
   group_by(week_id) %>%
-  summarise(
-    unique_dates = n_distinct(raw_date),
-    total_slots = n(),
-    .groups = "drop"
-  )
+  summarise(unique_dates = n_distinct(raw_date), total_slots = n(), .groups = "drop")
 
 print(intercept_days_per_week)
 
-cat("\n Checking observational time distribution... \n")
-
-obs_time_distribution <- observational_schedule %>%
+# Check distribution of survey times across the day
+cat("\n Analyzing time distribution... \n")
+time_distribution <- combined_schedule %>%
   mutate(hour = sapply(start_time, parse_time_to_hour)) %>%
-  group_by(site, hour) %>%
+  group_by(survey, site, hour) %>%
   summarise(count = n(), .groups = "drop") %>%
-  arrange(site, hour)
+  arrange(survey, site, hour)
 
-print(obs_time_distribution)
+cat("Time distribution across the day:\n")
+print(time_distribution)
 
-cat("\n Checking visitor intercept time distribution... \n")
-
-intercept_time_distribution <- intercept_schedule %>%
-  mutate(hour = sapply(start_time, parse_time_to_hour)) %>%
-  group_by(site, hour) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  arrange(site, hour)
-
-print(intercept_time_distribution)
-
-cat("\n Checking stratification summary... \n")
-
+# Check stratification results
+cat("\n Stratification summary... \n")
 strat_summary <- combined_schedule %>%
   group_by(survey, month, day_type) %>%
   summarise(
@@ -300,24 +312,24 @@ strat_summary <- combined_schedule %>%
   ) %>%
   arrange(survey, month, day_type)
 
+cat("Stratification results by month and day type:\n")
 print(strat_summary)
 
+# Overall summary of coverage
 cat("\n Overall sampling coverage... \n")
-
 total_unique_days <- n_distinct(combined_schedule$raw_date)
 total_days_in_period <- as.integer(end_date - start_date) + 1
 coverage_percentage <- round((total_unique_days / total_days_in_period) * 100, 1)
 
-cat("Total unique days sampled:", total_unique_days, "out of", total_days_in_period,
-    "days in the survey period (", coverage_percentage, "% coverage)\n", sep = "")
+cat("Total unique days sampled:", total_unique_days, "out of", total_days_in_period, 
+    "days in the survey period (", coverage_percentage, "% coverage)\n", sep="")
 
 #..............................................................................#
 # Write to CSV
-
 write.csv(combined_schedule, "recreation_survey_sampling_schedule_2026.csv", row.names = FALSE)
 
+# Write separate CSVs for each survey
 write.csv(observational_schedule, "recreation_Observational_sampling_schedule_2026.csv", row.names = FALSE)
-
 write.csv(intercept_schedule, "recreation_Visitor_Intercept_sampling_schedule_2026.csv", row.names = FALSE)
 
 #..............................................................................#
