@@ -10,7 +10,7 @@ library(dplyr)
 library(tidyr)
 
 # Set working directory
-setwd("C:/Users/Chelsea.Cameron/Box/-.Chelsea.Cameron Individual/SNPL")
+setwd("C:/Users/Chelsea.Cameron/Box/-.Chelsea.Cameron Individual/SNPL") 
 # NOTE: working directory will need to be changed based on the user.
 # The file path identified will be where the output files will be saved.
 
