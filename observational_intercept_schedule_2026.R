@@ -17,9 +17,17 @@ set.seed(123)
 
 #..............................................................................#
 # Define survey period
-start_date <- as.Date("2026-05-10")
+start_date <- as.Date("2026-05-18")
 end_date <- as.Date("2026-08-31")
-
+# Exclude event dates
+excluded_dates <- as.Date(c(
+  "2026-06-26",
+  "2026-07-10",
+  "2026-07-15",
+  "2026-08-07",
+  "2026-08-08",
+  "2026-08-09"
+))
 # Create a data frame with all dates in the survey period
 all_dates <- data.frame(
   date = seq.Date(from = start_date, to = end_date, by = "day")
